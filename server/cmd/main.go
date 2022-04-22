@@ -1,14 +1,13 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"log"
 	"net"
-	"time"
 
 	pb "github.com/5imonGustafsson/grpc-iot-concept/server/pb/messages"
+	"github.com/5imonGustafsson/grpc-iot-concept/server/service"
 	influx "github.com/influxdata/influxdb/client/v2"
 	"google.golang.org/grpc"
 )
@@ -19,56 +18,6 @@ var (
 	influxUser = flag.String("influx-user", "admin", "influxDB user")
 	influxPwd  = flag.String("influx-password", "admin", "influxDB password")
 )
-
-// server is used to implement messages.IoT
-type server struct {
-	pb.IoTServer
-	influxClient influx.Client
-}
-
-func (s *server) SendWaterSoilLevel(ctx context.Context, metrics *pb.WaterSoilMetrics) (*pb.MetricsReply, error) {
-	log.Printf("Received message: %v from device: %v", metrics.GetMessageId(), metrics.GetDeviceId())
-
-	bp, err := influx.NewBatchPoints(influx.BatchPointsConfig{
-		Database: "hydrophonic",
-	})
-
-	if err != nil {
-		return &pb.MetricsReply{
-			MessageId:  metrics.GetMessageId(),
-			StatusCode: 500,
-		}, err
-	}
-
-	tags := map[string]string{
-		"deviceId":  metrics.GetDeviceId(),
-		"messageId": metrics.GetMessageId(),
-	}
-
-	fields := map[string]interface{}{
-		"moisture": metrics.GetMoistureLevel(),
-	}
-
-	pt, err := influx.NewPoint("moisture-level", tags, fields, time.Now())
-	if err != nil {
-		return &pb.MetricsReply{
-			MessageId:  metrics.GetMessageId(),
-			StatusCode: 500,
-		}, err
-	}
-	bp.AddPoint(pt)
-	if err := s.influxClient.WriteCtx(ctx, bp); err != nil {
-		return &pb.MetricsReply{
-			MessageId:  metrics.GetMessageId(),
-			StatusCode: 500,
-		}, err
-	}
-
-	return &pb.MetricsReply{
-		MessageId:  metrics.GetMessageId(),
-		StatusCode: 200,
-	}, nil
-}
 
 func main() {
 	flag.Parse()
@@ -89,7 +38,7 @@ func main() {
 
 	defer influxDB.Close()
 
-	pb.RegisterIoTServer(s, &server{influxClient: influxDB})
+	pb.RegisterIoTServer(s, service.New(influxDB))
 
 	log.Printf("server listening at %v", lis.Addr())
 	if err := s.Serve(lis); err != nil {
