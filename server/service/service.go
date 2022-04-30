@@ -6,56 +6,41 @@ import (
 	"time"
 
 	pb "github.com/5imonGustafsson/grpc-iot-concept/server/pb/messages"
-	influx "github.com/influxdata/influxdb/client/v2"
+	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 )
 
 // server is used to implement messages.IoT
 type service struct {
-	influxClient influx.Client
+	influxClient influxdb2.Client
+	influxOrg    string
 	pb.UnimplementedIoTServer
 }
 
-func New(influxClient influx.Client) pb.IoTServer {
+func New(influxClient influxdb2.Client, influxOrg string) pb.IoTServer {
 	return &service{
 		influxClient: influxClient,
+		influxOrg:    influxOrg,
 	}
 }
 
 func (s *service) SendWaterSoilLevel(ctx context.Context, metrics *pb.WaterSoilMetrics) (*pb.MetricsReply, error) {
-	log.Printf("Received message: %v from device: %v", metrics.GetMessageId(), metrics.GetDeviceId())
+	messageID := metrics.GetMessageId()
+	deviceID := metrics.GetDeviceId()
+	log.Printf("Received message: %v from device: %v", messageID, deviceID)
 
-	bp, err := influx.NewBatchPoints(influx.BatchPointsConfig{
-		Database: "hydrophonic",
-	})
+	writeAPI := s.influxClient.WriteAPIBlocking(s.influxOrg, "hydrophonic")
 
-	if err != nil {
+	// Create point using fluent style
+	p := influxdb2.NewPointWithMeasurement("moisture-level").
+		AddTag("device_id", deviceID).
+		AddTag("message_id", messageID).
+		AddField("moisture", metrics.GetMoistureLevel()).
+		SetTime(time.Now())
+
+	if err := writeAPI.WritePoint(ctx, p); err != nil {
 		return &pb.MetricsReply{
-			MessageId:  metrics.GetMessageId(),
+			MessageId:  messageID,
 			Timestamp:  time.Now().UnixNano(),
-			StatusCode: 500,
-		}, err
-	}
-
-	tags := map[string]string{
-		"deviceId":  metrics.GetDeviceId(),
-		"messageId": metrics.GetMessageId(),
-	}
-
-	fields := map[string]interface{}{
-		"moisture": metrics.GetMoistureLevel(),
-	}
-
-	pt, err := influx.NewPoint("moisture-level", tags, fields, time.Now())
-	if err != nil {
-		return &pb.MetricsReply{
-			MessageId:  metrics.GetMessageId(),
-			StatusCode: 500,
-		}, err
-	}
-	bp.AddPoint(pt)
-	if err := s.influxClient.WriteCtx(ctx, bp); err != nil {
-		return &pb.MetricsReply{
-			MessageId:  metrics.GetMessageId(),
 			StatusCode: 500,
 		}, err
 	}

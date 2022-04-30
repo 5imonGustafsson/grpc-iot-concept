@@ -7,24 +7,28 @@ import (
 
 	"github.com/5imonGustafsson/grpc-iot-concept/server/mocks"
 	"github.com/5imonGustafsson/grpc-iot-concept/server/pb/messages"
-	influx "github.com/influxdata/influxdb/client/v2"
+	"github.com/influxdata/influxdb-client-go/v2/api"
+	"github.com/influxdata/influxdb-client-go/v2/api/write"
 )
 
 func TestService_SendWaterSoilLevel(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
-		var gotBatchPoints []*influx.Point
+		var gotOrg string
+		var gotBucket string
+		var gotPoints []*write.Point
 
 		s := New(&mocks.InfluxClient{
-			WriteCtxFunc: func(ctx context.Context, bp influx.BatchPoints) error {
-				gotBatchPoints = bp.Points()
-				return nil
+			WriteAPIBlockingFunc: func(org, bucket string) api.WriteAPIBlocking {
+				gotOrg = org
+				gotBucket = bucket
+				return &mocks.WriteAPI{
+					WritePointFunc: func(context context.Context, point ...*write.Point) error {
+						gotPoints = point
+						return nil
+					},
+				}
 			},
-		})
-
-		wantResponse := messages.MetricsReply{
-			MessageId:  "bar-id",
-			StatusCode: 200,
-		}
+		}, "foo-org")
 
 		gotResponse, err := s.SendWaterSoilLevel(context.Background(), &messages.WaterSoilMetrics{
 			DeviceId:      "foo-id",
@@ -35,12 +39,25 @@ func TestService_SendWaterSoilLevel(t *testing.T) {
 			t.Errorf("unexpected error %v", err)
 		}
 
-		if got, want := len(gotBatchPoints), 1; got != want {
-			t.Errorf("Expected batch point length %v got %v", want, got)
+		if got, want := gotOrg, "foo-org"; got != want {
+			t.Errorf("Got organisation %s want: %s", got, want)
+		}
+
+		if got, want := gotBucket, "hydrophonic"; got != want {
+			t.Errorf("Got bucket %s want: %s", got, want)
+		}
+
+		if got, want := len(gotPoints), 1; got != want {
+			t.Errorf("Got batch point length %v want %v", got, want)
+		}
+
+		wantResponse := messages.MetricsReply{
+			MessageId:  "bar-id",
+			StatusCode: 200,
 		}
 
 		if got, want := gotResponse, &wantResponse; got.MessageId != want.MessageId || got.StatusCode != want.StatusCode {
-			t.Errorf("expected response: %v, got: %v", &wantResponse, gotResponse)
+			t.Errorf("got response: %v, want: %v", gotResponse, &wantResponse)
 		}
 
 	})
@@ -50,10 +67,14 @@ func TestService_SendWaterSoilLevel(t *testing.T) {
 		fooErr := errors.New("foo error")
 
 		s := New(&mocks.InfluxClient{
-			WriteCtxFunc: func(ctx context.Context, bp influx.BatchPoints) error {
-				return fooErr
+			WriteAPIBlockingFunc: func(org, bucket string) api.WriteAPIBlocking {
+				return &mocks.WriteAPI{
+					WritePointFunc: func(context context.Context, point ...*write.Point) error {
+						return fooErr
+					},
+				}
 			},
-		})
+		}, "foo-org")
 
 		_, err := s.SendWaterSoilLevel(context.Background(), &messages.WaterSoilMetrics{
 			DeviceId:      "foo-id",

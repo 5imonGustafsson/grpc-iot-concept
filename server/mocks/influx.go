@@ -3,14 +3,25 @@ package mocks
 import (
 	"context"
 
-	influx "github.com/influxdata/influxdb/client/v2"
+	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
+	"github.com/influxdata/influxdb-client-go/v2/api"
+	"github.com/influxdata/influxdb-client-go/v2/api/write"
 )
 
 type InfluxClient struct {
-	WriteCtxFunc func(ctx context.Context, bp influx.BatchPoints) error
-	influx.Client
+	WriteAPIBlockingFunc func(org string, bucket string) api.WriteAPIBlocking
+	influxdb2.Client
 }
 
-func (c *InfluxClient) WriteCtx(ctx context.Context, bp influx.BatchPoints) error {
-	return c.WriteCtxFunc(ctx, bp)
+type WriteAPI struct {
+	WritePointFunc func(ctx context.Context, point ...*write.Point) error
+	api.WriteAPIBlocking
+}
+
+func (c *InfluxClient) WriteAPIBlocking(org string, bucket string) api.WriteAPIBlocking {
+	return c.WriteAPIBlockingFunc(org, bucket)
+}
+
+func (w *WriteAPI) WritePoint(ctx context.Context, point ...*write.Point) error {
+	return w.WritePointFunc(ctx, point...)
 }

@@ -1,0 +1,30 @@
+version: '3'
+
+networks:
+  metrics:
+    external: false
+
+services:
+  influxdb:
+    image: influxdb:latest
+    container_name: influxdb
+    restart: always
+    networks: [metrics]
+    ports:
+      - "8086:8086"
+    volumes:
+      - ./influxdb/data:/var/lib/influxdb
+    environment:
+      - INFLUXDB_ADMIN_USER=admin # sourced from .env
+      - INFLUXDB_ADMIN_PASSWORD=administrator # sourced from .env
+      - INFLUX_TOKEN=demotoken
+      - INFLUX_ORG=demo.org 
+  grafana:
+    container_name: grafana
+    image: grafana/grafana-oss:latest
+    restart: always
+    ports:
+      - 3000:3000
+    depends_on:
+      - influxdb
+    networks: [metrics]
