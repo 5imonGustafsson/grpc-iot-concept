@@ -1,1 +1,6 @@
 infrastructure/influxdb
+.pio
+/clients/water-soil-sensor/.vscode/.browse.c_cpp.db*
+/clients/water-soil-sensor/.vscode/c_cpp_properties.json
+/clients/water-soil-sensor/.vscode/launch.json
+/clients/water-soil-sensor/.vscode/ipch
